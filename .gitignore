@@ -173,14 +173,14 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Misc temporary files
+*.tmp
+*.bak
+*.swp
 
 # Cloud Companion Specifics
 logs/
 
 # Archive directory for unrelated/temporary files
 .archive/
-
-# Misc temporary files
-*.tmp
-*.bak
-*.swp
+fixtures/scripts

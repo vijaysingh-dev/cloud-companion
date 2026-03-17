@@ -26,3 +26,6 @@ ollama_data/
 tests/
 docs/
 .github/
+
+.archive
+fixtures/scripts

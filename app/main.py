@@ -1,6 +1,5 @@
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
@@ -11,9 +10,6 @@ from app.api.health import router as health_router
 from app.core.application import Application
 from app.core.migrate import get_latest_migration_version
 from app.core.config import settings
-
-# Root directory of the cloud-companion project
-ROOT_DIR = Path(__file__).parent.parent
 
 logger = logging.getLogger("cloud-companion")
 

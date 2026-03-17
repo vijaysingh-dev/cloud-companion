@@ -1,8 +1,7 @@
+from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from app.core.config import settings
-from app.main import ROOT_DIR
+from app.core.config import ROOT_DIR, settings
 
 
 class RelativePathFormatter(logging.Formatter):

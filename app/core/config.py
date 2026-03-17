@@ -1,8 +1,12 @@
 from typing import List
+from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
-from pathlib import Path
+
+
+# Root directory of the cloud-companion project
+ROOT_DIR = Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -31,8 +35,8 @@ class Settings(BaseSettings):
             return [item.strip() for item in v.split(",")]
         return v
 
-    NEO4J_URI: str = Field(default="bolt://neo4j:7687")
-    NEO4J_USER: str = Field(default="companion")
+    NEO4J_URI: str = Field(default="bolt://localhost:7687")
+    NEO4J_USER: str = Field(default="neo4j")
     NEO4J_PASSWORD: str = Field(default="")
     NEO4J_DATABASE: str = Field(default="neo4j")
 
@@ -43,8 +47,7 @@ class Settings(BaseSettings):
             raise ValueError("NEO4J_PASSWORD cannot be empty")
         return v
 
-    WEAVIATE_URL: str = Field(default="http://weaviate:8080")
-    WEAVIATE_API_KEY: str = Field(default="")
+    WEAVIATE_HOST: str = Field(default="localhost")
 
     API_HMAC_SECRET: str = Field(default="")
 
@@ -58,10 +61,6 @@ class Settings(BaseSettings):
     AWS_ACCOUNT_ID: str = Field(default="")
     AZURE_SUBSCRIPTION_ID: str = Field(default="")
     GCP_PROJECT_ID: str = Field(default="")
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 @lru_cache()

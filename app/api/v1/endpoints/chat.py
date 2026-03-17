@@ -4,7 +4,7 @@ from app.api.deps import RequestContext, get_request_context
 from app.models.schema import ChatMessageRequest, ChatResponse
 from app.services.neo4j import Neo4jService
 from app.services.weaviate import WeaviateService
-from app.services.llm import LLMService
+from app.services.llm_service import LLMService
 from app.services.chat import ChatService
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,10 @@
 import typer
-from cli.migrate import cli as migrate_cli
-from cli.organization import cli as org_cli
-from cli.cloud_account import cli as account_cli
-from cli.api_key import cli as key_cli
+
+from app.cli.migrate import cli as migrate_cli
+from app.cli.organization import cli as org_cli
+from app.cli.account import cli as account_cli
+from app.cli.api_key import cli as key_cli
+
 
 cli = typer.Typer()
 

@@ -1,9 +1,7 @@
-# app/models/graph.py
-
 from uuid import uuid4
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from app.core.constants import CloudProvider
+from app.core.constants import CloudProviderEnum
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +100,7 @@ class Account(BaseNode):
         self,
         org_id: str,
         name: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         account_id: str,
         created_at: datetime | str = utc_now(),
         last_synced: datetime | str = utc_now(),
@@ -135,7 +133,7 @@ class Region(BaseNode):
 
     def __init__(
         self,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         code: str,
         name: str,
     ):
@@ -156,7 +154,7 @@ class AvailabilityZone(BaseNode):
 
     def __init__(
         self,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         name: str,
         region_code: str,
     ):
@@ -183,7 +181,7 @@ class VirtualNetwork(BaseNode):
     def __init__(
         self,
         account_id: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         network_id: str,
         name: Optional[str],
         region: str,
@@ -238,7 +236,7 @@ class RouteTable(BaseNode):
         self,
         route_table_id: str,
         account_id: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         network_id: str,
         region: str,
         name: Optional[str] = None,
@@ -272,7 +270,7 @@ class SecurityBoundary(BaseNode):
         boundary_id: str,
         name: Optional[str],
         account_id: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
     ):
         self.boundary_id = boundary_id
         self.name = name
@@ -295,7 +293,7 @@ class Gateway(BaseNode):
         self,
         gateway_id: str,
         account_id: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         gateway_type: str,  # INTERNET, NAT, VPN, TRANSIT, etc.
         region: Optional[str] = None,
         network_id: Optional[str] = None,
@@ -336,7 +334,7 @@ class Identity(BaseNode):
         self,
         identity_id: str,
         name: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         account_id: str,
         identity_type: str,
     ):
@@ -363,7 +361,7 @@ class Policy(BaseNode):
         self,
         policy_id: str,
         name: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         account_id: str,
     ):
         self.policy_id = policy_id
@@ -398,7 +396,7 @@ class Resource(BaseNode):
         resource_id: str,
         name: Optional[str],
         resource_type: str,
-        provider: CloudProvider,
+        provider: CloudProviderEnum,
         account_id: str,
         region: Optional[str] = None,
         network_id: Optional[str] = None,
@@ -416,6 +414,12 @@ class Resource(BaseNode):
         self.subnet_id = subnet_id
         self.metadata = metadata or {}
         self.created_at = ensure_datetime(created_at)
+
+    @property
+    def node_type(self):
+        from app.core.constants import ResourceType
+
+        return ResourceType[self.provider][self.resource_type].node  # type: ignore
 
     def to_dict(self):
         return {

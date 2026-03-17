@@ -1,30 +1,43 @@
 import typer
 from rich import print
-from app.cli.utils import with_app
-from app.core.application import Application
+
+from app.cli.runtime import run_async, get_app
 from app.models.graph import Organization
+
 
 cli = typer.Typer()
 
 
 @cli.command()
-@with_app()
-async def create(app: Application, name: str, description: str = ""):
-    org = Organization(name=name, description=description)
-    await app.repo.organization.create_org(org)
-    print(f"[green]Organization created[/green] ID: {org.id}")
+def create(name: str, description: str = ""):
+    async def _create():
+        app = get_app()
+
+        org = Organization(name=name, description=description)
+        await app.repo.organization.create_org(org)
+        print(f"[green]Organization created[/green] ID: {org.id}")
+
+    run_async(_create)
 
 
 @cli.command()
-@with_app()
-async def list(app: Application):
-    orgs = await app.repo.organization.list_organizations()
-    for r in orgs:
-        print(f"{r.id} | {r.name}")
+def list():
+    async def _list():
+        app = get_app()
+
+        orgs = await app.repo.organization.list_organizations()
+        for r in orgs:
+            print(f"{r.id} | {r.name}")
+
+    run_async(_list)
 
 
 @cli.command()
-@with_app()
-async def delete(app: Application, org_id: str):
-    await app.repo.organization.delete_org(org_id)
-    print("[red]Organization deleted[/red]")
+def delete(org_id: str):
+    async def _delete():
+        app = get_app()
+
+        await app.repo.organization.delete_org(org_id)
+        print("[red]Organization deleted[/red]")
+
+    run_async(_delete)
