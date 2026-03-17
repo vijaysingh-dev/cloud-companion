@@ -28,4 +28,4 @@ docs/
 .github/
 
 .archive
-fixtures/scripts
+scripts

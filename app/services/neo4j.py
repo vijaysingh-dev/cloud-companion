@@ -37,7 +37,7 @@ class Neo4jService:
 
         try:
             async with self.driver.session(database=self.database) as session:
-                result = await session.run(query, parameters or {})
+                result = await session.run(query, parameters or {})  # type: ignore
                 records = await result.fetch(-1)
                 return [record.data() for record in records]
         except Exception as e:

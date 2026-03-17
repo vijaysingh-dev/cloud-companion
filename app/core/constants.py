@@ -1,4 +1,12 @@
 from enum import Enum
+from datetime import datetime, timezone
+
+
+class AppMode(str, Enum):
+
+    API = "API"
+    CELERY = "CELERY"
+    CLI = "CLI"
 
 
 class Node(str, Enum):
@@ -138,6 +146,10 @@ class Relation(str, Enum):
     EMITS_METRICS_TO = "EMITS_METRICS_TO"
     MONITORED_BY = "MONITORED_BY"
     TRACED_BY = "TRACED_BY"
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class CloudProviderEnum(str, Enum):

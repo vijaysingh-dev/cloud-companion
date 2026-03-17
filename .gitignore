@@ -183,4 +183,4 @@ logs/
 
 # Archive directory for unrelated/temporary files
 .archive/
-fixtures/scripts
+scripts

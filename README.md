@@ -146,10 +146,22 @@ pytest -v --cov=app
 
 ```bash
 # Start databases
-docker-compose up neo4j weaviate -d
+docker-compose up neo4j weaviate redis -d
 
 # Run FastAPI
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Run Celery Worker
+
+```bash
+celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+```
+
+### Example Task API
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tasks/ping -H "X-API-Key: <your-api-key>"
 ```
 
 ## Testing

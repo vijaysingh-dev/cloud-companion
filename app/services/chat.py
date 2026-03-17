@@ -1,6 +1,6 @@
-import logging
-import uuid
+import uuid, logging
 from typing import Optional, Dict, Any, List
+
 from app.services.neo4j import Neo4jService
 from app.services.weaviate import WeaviateService
 from app.services.llm import LLMService

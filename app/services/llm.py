@@ -1,74 +1,102 @@
 import logging
-from typing import Any, Dict, List, Optional
-from app.core.config import settings
-from app.core.exceptions import LLMError
+from typing import Optional, Dict
+from textwrap import dedent
+
+from app.llm.provider import LLMProvider
+from app.llm.prompt_registry import PromptRegistry
+from app.llm.cache import LLMCache
 
 logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    def __init__(self):
-        self.provider = settings.LLM_PROVIDER
-        self.model = settings.LLM_MODEL
-        self.api_key = settings.LLM_API_KEY
-        self.base_url = settings.LLM_BASE_URL
-        self.temperature = settings.LLM_TEMPERATURE
-        self.max_tokens = settings.LLM_MAX_TOKENS
 
-    async def generate_response(
+    def __init__(self):
+
+        self.provider = LLMProvider()
+        self.prompts = PromptRegistry()
+        self.cache = LLMCache()
+
+    async def generate_answer(
         self,
-        messages: List[Dict[str, str]],
+        user_query: str,
         context: Optional[str] = None,
     ) -> str:
-        try:
-            from litellm import acompletion
 
-            system_message = (
-                f"You are Cloud Companion, an AI assistant for cloud troubleshooting. "
-                f"Use the following context to provide step-by-step solutions:\n{context}"
-                if context
-                else "You are Cloud Companion, an AI assistant for cloud troubleshooting."
-            )
+        system_prompt = self.prompts.get_prompt(
+            "system",
+            "cloud_troubleshoot",
+        )
 
-            formatted_messages = [
-                {"role": "system", "content": system_message},
-                *messages,
-            ]
+        if context:
+            system_prompt += f"\n\nContext:\n{context}"
 
-            response = await acompletion(
-                model=f"{self.provider}/{self.model}",
-                messages=formatted_messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                api_base=self.base_url if self.provider == "ollama" else None,
-                api_key=self.api_key or "not-needed",
-            )
+        payload = system_prompt + user_query
+        cached = self.cache.get(payload)
 
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"LLM generation error: {str(e)}")
-            raise LLMError(f"Failed to generate response: {str(e)}")
+        if cached:
+            return cached
 
-    async def create_embeddings(self, text: str) -> List[float]:
-        try:
-            from litellm import aembedding
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_query},
+        ]
 
-            response = await aembedding(
-                model=f"{self.provider}/embedding",
-                input=[text],
-                api_base=self.base_url if self.provider == "ollama" else None,
-                api_key=self.api_key or "not-needed",
-            )
+        response = await self.provider.completion(messages)
 
-            return response.data[0].embedding
-        except Exception as e:
-            logger.error(f"Embedding generation error: {str(e)}")
-            raise LLMError(f"Failed to generate embeddings: {str(e)}")
+        self.cache.set(payload, response)
 
-    async def health_check(self) -> bool:
-        try:
-            await self.generate_response([{"role": "user", "content": "ping"}])
-            return True
-        except Exception as e:
-            logger.error(f"LLM health check failed: {str(e)}")
-        return False
+        return response  # type: ignore
+
+    async def humanize_resources(
+        self,
+        resources: Dict,
+        relationships: Dict,
+    ):
+
+        prompt = self.prompts.get_prompt(
+            "small_llm",
+            "humanize_resources",
+        )
+
+        payload = str(resources) + str(relationships)
+
+        cached = self.cache.get(payload)
+
+        if cached:
+            return cached
+
+        messages = [
+            {"role": "system", "content": prompt},
+            {
+                "role": "user",
+                "content": dedent(
+                    f"""Resources:
+                    {resources}
+
+                    Relationships:
+                    {relationships}
+
+                    Convert into factual sentences."""
+                ).strip(),
+            },
+        ]
+
+        result = await self.provider.completion(messages, small=True)
+
+        self.cache.set(payload, result)
+
+        return result
+
+    async def create_embedding(self, text: str):
+
+        cached = self.cache.get(text)
+
+        if cached:
+            return cached
+
+        embedding = await self.provider.embedding(text)
+
+        self.cache.set(text, embedding)
+
+        return embedding

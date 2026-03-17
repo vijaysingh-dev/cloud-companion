@@ -49,6 +49,19 @@ class Settings(BaseSettings):
 
     WEAVIATE_HOST: str = Field(default="localhost")
 
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/1")
+    CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/2")
+
+    LLM_PROVIDER: str = Field(default="ollama")
+    LLM_MODEL: str = Field(default="gpt-4o-mini")
+    SMALL_LLM_PROVIDER: str = Field(default="ollama")
+    SMALL_LLM_MODEL: str = Field(default="gpt-4o-mini")
+    EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
+    LLM_BASE_URL: str = Field(default="http://localhost:11434")
+    LLM_TEMPERATURE: float = Field(default=0.2)
+    LLM_MAX_TOKENS: int = Field(default=1024)
+
     API_HMAC_SECRET: str = Field(default="")
 
     @field_validator("API_HMAC_SECRET")

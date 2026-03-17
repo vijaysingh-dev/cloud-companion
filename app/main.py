@@ -7,26 +7,26 @@ from app.middleware.error_handler import setup_exception_handlers
 from app.middleware.logging import LoggingMiddleware
 from app.api.v1.router import router as v1_router
 from app.api.health import router as health_router
-from app.core.application import Application
+from app.core.application import init_api_app
 from app.core.migrate import get_latest_migration_version
 from app.core.config import settings
 
 logger = logging.getLogger("cloud-companion")
 
-app_instance = Application()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await app_instance.start()
-
+    app_instance = await init_api_app()
     version = await get_latest_migration_version(app_instance.neo4j)
     if not version:
         raise RuntimeError("Database not migrated. Run `cc migrate` before starting APP.")
 
     app.state.app = app_instance
-    yield
-    await app_instance.stop()
+
+    try:
+        yield
+    finally:
+        await app_instance.stop()
 
 
 def create_application() -> FastAPI:

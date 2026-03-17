@@ -1,24 +1,22 @@
 import logging
 from typing import Any, Dict, List, Optional
-from app.core.config import settings
+
 from app.core.exceptions import DatabaseError
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class WeaviateService:
     def __init__(self):
-        self.url = settings.WEAVIATE_URL
+        self.host = settings.WEAVIATE_HOST
         self.client = None
 
     async def connect(self) -> None:
         try:
             import weaviate
 
-            self.client = weaviate.connect_to_local(
-                host=self.url.replace("http://", "").split(":")[0],
-                grpc_port=int(self.url.split(":")[-1]) + 1000 if ":" in self.url else 50051,
-            )
+            self.client = weaviate.connect_to_local(host=self.host)
             logger.info("Connected to Weaviate")
         except Exception as e:
             logger.error(f"Failed to connect to Weaviate: {str(e)}")

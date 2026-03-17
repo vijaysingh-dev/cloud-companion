@@ -1,13 +1,16 @@
 import asyncio
 
-from app.core.application import Application
+from app.core.application import get_cli_app
 from app.core.migrate import get_latest_migration_version
 
 
-_app_instance = Application()
+_app_instance = None
 
 
 async def startup(require_migration: bool = True):
+    global _app_instance
+
+    _app_instance = get_cli_app()
     await _app_instance.start()
 
     if require_migration:
@@ -17,7 +20,12 @@ async def startup(require_migration: bool = True):
 
 
 async def shutdown():
-    await _app_instance.stop()
+    global _app_instance
+
+    if _app_instance and _app_instance.started:
+        await _app_instance.stop()
+
+    _app_instance = None
 
 
 def run_async(func, require_migration: bool = True):
@@ -32,4 +40,6 @@ def run_async(func, require_migration: bool = True):
 
 
 def get_app():
+    if _app_instance is None:
+        raise RuntimeError("App not initialized. Use run_async().")
     return _app_instance

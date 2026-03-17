@@ -40,6 +40,36 @@ services:
       timeout: 10s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: cloud-companion-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  celery_worker:
+    build: .
+    container_name: cloud-companion-celery-worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: celery -A app.core.celery:celery worker --loglevel=info --concurrency=2
+
   app:
     build: .
     container_name: cloud-companion-api
@@ -59,3 +89,4 @@ services:
 volumes:
   neo4j_data:
   weaviate_data:
+  redis_data:

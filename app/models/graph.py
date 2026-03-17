@@ -1,16 +1,12 @@
 from uuid import uuid4
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone
-from app.core.constants import CloudProviderEnum
+from datetime import datetime
+from app.core.constants import CloudProviderEnum, utc_now
 
 
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def ensure_datetime(val: str | datetime) -> datetime:
@@ -385,8 +381,7 @@ class Policy(BaseNode):
 
 class Resource(BaseNode):
     """
-    All cloud services (EC2, RDS, Lambda, AKS, GKE, etc.)
-    fall into this generic node.
+    All cloud services (EC2, RDS, Lambda, AKS, GKE, etc.) fall into this generic node.
     """
 
     label = "Resource"
