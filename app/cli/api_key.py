@@ -1,11 +1,12 @@
 import secrets
-import typer
 from rich import print
 from datetime import datetime, timezone, timedelta
 
+import typer
+from app.cli.runtime import run_async, get_app
+
 from app.models.graph import APIKey
 from app.api.deps import hash_api_key
-from app.cli.runtime import run_async, get_app
 
 
 cli = typer.Typer()
@@ -24,7 +25,7 @@ def create(org_name: str, name: str, days_valid: int = 30):
         raw_key = "cc_live_" + secrets.token_hex(32)
         expires = datetime.now(timezone.utc) + timedelta(days=days_valid)
         key_data = APIKey(
-            org_id=org.id,
+            org_id=org.org_id,
             name=name,
             hashed_key=hash_api_key(raw_key),
             expires_at=expires.isoformat(),
@@ -60,6 +61,6 @@ def list(org_id: str):
 
         keys = await app.repo.organization.list_api_keys(org_id)
         for r in keys:
-            print(f"{r.id} | {r.name} | Active: {r.is_active}")
+            print(f"{r.key_id} | {r.name} | Active: {r.is_active}")
 
     run_async(_list)

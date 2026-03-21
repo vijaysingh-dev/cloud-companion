@@ -1,6 +1,6 @@
 import typer
-
 from app.cli.runtime import run_async, get_app
+
 from app.core.migrate import run_migrations
 
 

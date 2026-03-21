@@ -1,10 +1,11 @@
-import typer
 from rich import print
 from typing import Annotated
 
+import typer
+from app.cli.runtime import run_async, get_app
+
 from app.core.constants import CloudProviderEnum
 from app.models.graph import Account
-from app.cli.runtime import run_async, get_app
 
 
 cli = typer.Typer()
@@ -26,7 +27,7 @@ def create(
             raise typer.Exit(code=1)
 
         acc = Account(
-            org_id=org.id,
+            org_id=org.org_id,
             name=name,
             provider=provider,
             account_id=account_id,

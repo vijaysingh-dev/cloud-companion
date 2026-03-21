@@ -5,11 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
-# Root directory of the cloud-companion project
-ROOT_DIR = Path(__file__).parent.parent.parent
-
-
 class Settings(BaseSettings):
+    ROOT_DIR = Path(__file__).parent.parent.parent
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -55,10 +53,12 @@ class Settings(BaseSettings):
 
     LLM_PROVIDER: str = Field(default="ollama")
     LLM_MODEL: str = Field(default="gpt-4o-mini")
-    SMALL_LLM_PROVIDER: str = Field(default="ollama")
-    SMALL_LLM_MODEL: str = Field(default="gpt-4o-mini")
+    MINI_LLM_MODEL: str = Field(default="gpt-4o-mini")
+    LLM_API_KEY: str = Field(default="")
+
     EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
-    LLM_BASE_URL: str = Field(default="http://localhost:11434")
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
+
     LLM_TEMPERATURE: float = Field(default=0.2)
     LLM_MAX_TOKENS: int = Field(default=1024)
 
@@ -71,8 +71,24 @@ class Settings(BaseSettings):
             raise ValueError("API_HMAC_SECRET must be set for secure operations")
         return v
 
-    AWS_ACCOUNT_ID: str = Field(default="")
+    AWS_PROFILE_MODE: str = Field(default="DEFAULT")
+
+    AWS_REGIONS: List[str] = Field(default=["us-east-1", "us-west-2"])
+
+    @field_validator("AWS_REGIONS")
+    @classmethod
+    def validate_aws_regions(cls, v) -> List[str]:
+        if isinstance(v, str):
+            v = [item.strip() for item in v.split(",")]
+        return v
+
+    AZURE_SP_AUTH: bool = Field(default=False)
+    AZURE_TENANT_ID: str = Field(default="")
+    AZURE_CLIENT_ID: str = Field(default="")
+    AZURE_CLIENT_SECRET: str = Field(default="")
+
     AZURE_SUBSCRIPTION_ID: str = Field(default="")
+
     GCP_PROJECT_ID: str = Field(default="")
 
 

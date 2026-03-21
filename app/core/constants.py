@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 
 class AppMode(str, Enum):
-
     API = "API"
     CELERY = "CELERY"
     CLI = "CLI"
@@ -23,7 +22,7 @@ class Node(str, Enum):
     AVAILABILITY_ZONE = "AvailabilityZone"
 
     # Networking
-    NETWORK = "Network"
+    NETWORK = "VirtualNetwork"
     SUBNET = "Subnet"
     ROUTE_TABLE = "RouteTable"
     GATEWAY = "Gateway"
@@ -78,8 +77,11 @@ class Node(str, Enum):
     # Generic fallback
     RESOURCE = "Resource"
 
+    # Utils
+    SYNC_METADATA = "SyncMetadata"
 
-class Relation(str, Enum):
+
+class Relationship(str, Enum):
 
     # Organizational
     OWNS = "OWNS"
@@ -97,6 +99,7 @@ class Relation(str, Enum):
     PART_OF = "PART_OF"
     ATTACHED_TO = "ATTACHED_TO"
     ASSOCIATED_WITH = "ASSOCIATED_WITH"
+    HAS_SYNC = "HAS_SYNC"
 
     # Networking
     HOSTS = "HOSTS"
@@ -153,9 +156,22 @@ def utc_now() -> datetime:
 
 
 class CloudProviderEnum(str, Enum):
-    AWS = "AWS"
-    AZURE = "AZURE"
-    GCP = "GCP"
+    AWS = "aws"
+    AZURE = "azure"
+    GCP = "gcp"
+
+
+class CartographyAccount(str, Enum):
+    AWS_ACCOUNT = "AWSAccount"
+    AZURE_SUBSCRIPTION = "AzureSubscription"
+    GCP_PROJECT = "GCPProject"
+
+
+PROVIDER_ACCOUNT_MAP = {
+    CloudProviderEnum.AWS: CartographyAccount.AWS_ACCOUNT,
+    CloudProviderEnum.AZURE: CartographyAccount.AZURE_SUBSCRIPTION,
+    CloudProviderEnum.GCP: CartographyAccount.GCP_PROJECT,
+}
 
 
 class Region:

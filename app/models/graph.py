@@ -1,7 +1,8 @@
 from uuid import uuid4
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Annotated
 from datetime import datetime
-from app.core.constants import CloudProviderEnum, utc_now
+
+from app.core.constants import Node, CloudProviderEnum, utc_now
 
 
 # ---------------------------------------------------------------------------
@@ -33,23 +34,22 @@ class BaseNode:
 
 
 class Organization(BaseNode):
-    label = "Organization"
+    label = Node.ORGANIZATION
 
     def __init__(
         self,
         name: str,
         description: Optional[str] = None,
-        id: Optional[str] = None,
         created_at: datetime | str = utc_now(),
     ):
-        self.id = id or str(uuid4())
+        self.org_id = str(uuid4())
         self.name = name
         self.description = description
         self.created_at = ensure_datetime(created_at)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
+            "org_id": self.org_id,
             "name": self.name,
             "description": self.description,
             "created_at": self.created_at.isoformat(),
@@ -57,7 +57,7 @@ class Organization(BaseNode):
 
 
 class APIKey(BaseNode):
-    label = "APIKey"
+    label = Node.API_KEY
 
     def __init__(
         self,
@@ -65,11 +65,10 @@ class APIKey(BaseNode):
         name: str,
         hashed_key: str,
         expires_at: datetime | str,
-        id: Optional[str] = None,
         is_active: bool = True,
         created_at: datetime | str = utc_now(),
     ):
-        self.id = id or str(uuid4())
+        self.key_id = str(uuid4())
         self.org_id = org_id
         self.name = name
         self.hashed_key = hashed_key
@@ -79,7 +78,7 @@ class APIKey(BaseNode):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
+            "key_id": self.key_id,
             "org_id": self.org_id,
             "name": self.name,
             "hashed_key": self.hashed_key,
@@ -90,7 +89,7 @@ class APIKey(BaseNode):
 
 
 class Account(BaseNode):
-    label = "Account"
+    label = Node.ACCOUNT
 
     def __init__(
         self,
@@ -125,7 +124,7 @@ class Account(BaseNode):
 
 
 class Region(BaseNode):
-    label = "Region"
+    label = Node.REGION
 
     def __init__(
         self,
@@ -146,7 +145,7 @@ class Region(BaseNode):
 
 
 class AvailabilityZone(BaseNode):
-    label = "AvailabilityZone"
+    label = Node.AVAILABILITY_ZONE
 
     def __init__(
         self,
@@ -172,7 +171,7 @@ class AvailabilityZone(BaseNode):
 
 
 class VirtualNetwork(BaseNode):
-    label = "VirtualNetwork"
+    label = Node.NETWORK
 
     def __init__(
         self,
@@ -199,7 +198,7 @@ class VirtualNetwork(BaseNode):
 
 
 class Subnet(BaseNode):
-    label = "Subnet"
+    label = Node.SUBNET
 
     def __init__(
         self,
@@ -226,7 +225,7 @@ class Subnet(BaseNode):
 
 
 class RouteTable(BaseNode):
-    label = "RouteTable"
+    label = Node.ROUTE_TABLE
 
     def __init__(
         self,
@@ -259,7 +258,7 @@ class RouteTable(BaseNode):
 
 
 class SecurityBoundary(BaseNode):
-    label = "SecurityBoundary"
+    label = Node.SECURITY_BOUNDARY
 
     def __init__(
         self,
@@ -283,7 +282,7 @@ class SecurityBoundary(BaseNode):
 
 
 class Gateway(BaseNode):
-    label = "Gateway"
+    label = Node.GATEWAY
 
     def __init__(
         self,
@@ -324,7 +323,7 @@ class Gateway(BaseNode):
 
 
 class Identity(BaseNode):
-    label = "Identity"
+    label = Node.IDENTITY
 
     def __init__(
         self,
@@ -351,7 +350,7 @@ class Identity(BaseNode):
 
 
 class Policy(BaseNode):
-    label = "Policy"
+    label = Node.POLICY
 
     def __init__(
         self,
@@ -384,7 +383,7 @@ class Resource(BaseNode):
     All cloud services (EC2, RDS, Lambda, AKS, GKE, etc.) fall into this generic node.
     """
 
-    label = "Resource"
+    label = Node.RESOURCE
 
     def __init__(
         self,
@@ -428,4 +427,39 @@ class Resource(BaseNode):
             "subnet_id": self.subnet_id,
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+class SyncMetadata(BaseNode):
+    label = Node.SYNC_METADATA
+
+    def __init__(
+        self,
+        account_id: str,
+        regions: list[str],
+        services: list[str],
+        sync_type: Annotated[str, "baseline", "incremental"],
+        trigger: Annotated[str, "setup", "scheduled", "manual"],
+        started_at: datetime | str = utc_now(),
+        completed_at: Optional[datetime | str] = None,
+    ):
+        self.sync_id = str(uuid4())
+        self.account_id = account_id
+        self.regions = regions
+        self.services = services
+        self.sync_type = sync_type
+        self.trigger = trigger
+        self.started_at = ensure_datetime(started_at)
+        self.completed_at = ensure_datetime(completed_at) if completed_at else None
+
+    def to_dict(self):
+        return {
+            "sync_id": self.sync_id,
+            "account_id": self.account_id,
+            "regions": self.regions,
+            "services": self.services,
+            "sync_type": self.sync_type,
+            "trigger": self.trigger,
+            "started_at": self.started_at.isoformat(),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }

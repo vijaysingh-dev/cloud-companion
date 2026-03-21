@@ -1,7 +1,8 @@
-import typer
 from rich import print
 
+import typer
 from app.cli.runtime import run_async, get_app
+
 from app.models.graph import Organization
 
 
@@ -15,7 +16,7 @@ def create(name: str, description: str = ""):
 
         org = Organization(name=name, description=description)
         await app.repo.organization.create_org(org)
-        print(f"[green]Organization created[/green] ID: {org.id}")
+        print(f"[green]Organization created[/green] ID: {org.org_id}")
 
     run_async(_create)
 
@@ -27,7 +28,7 @@ def list():
 
         orgs = await app.repo.organization.list_organizations()
         for r in orgs:
-            print(f"{r.id} | {r.name}")
+            print(f"{r.org_id} | {r.name}")
 
     run_async(_list)
 
