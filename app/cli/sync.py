@@ -15,6 +15,7 @@ from app.services.cartography_companion.pipeline import Pipeline, SyncResult
 from app.services.cartography_companion.registry.service_registry import registry
 from app.cli.runtime import get_app, run_async
 
+
 logger = logging.getLogger(__name__)
 
 console = Console()

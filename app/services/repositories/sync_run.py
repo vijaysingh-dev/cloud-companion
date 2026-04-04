@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from app.core.constants import Node
-from app.models.graph import SyncRun
+from app.core.constants import Node, Relationship
+from app.models.graph import ServiceSyncRecord, SyncRun
 from app.services.neo4j import Neo4jService
 
 
@@ -11,27 +11,24 @@ class SyncRepository:
         self.driver = driver
 
     # ── SyncRun (whole-run record, written once at completion) ────────────
-
     async def record_sync_run(self, sync_run: SyncRun) -> None:
         """
         Persist a completed SyncRun node and link it to the Account.
         Called ONCE per pipeline.run() at the end — never mid-run.
         """
-        query = """
-        CREATE (r:SyncRun)
-        SET r = $props
-        WITH r
-        MATCH (a:Account {id: $account_id})
-        MERGE (a)-[:HAS_SYNC]->(r)
-        """
-        await self.driver.execute_query(
-            query,
-            {"props": sync_run.to_dict(), "account_id": sync_run.account_id},
+        props = sync_run.to_dict()
+        await self.driver.create_node(Node.SYNC_RUN, props)
+        await self.driver.create_relationship(
+            Node.ACCOUNT,
+            sync_run.account_id,
+            Relationship.HAS_SYNC,
+            Node.SYNC_RUN,
+            props["id"],
         )
 
     async def get_latest_sync(self, account_id: str) -> Optional[SyncRun]:
-        query = """
-        MATCH (a:Account {id: $account_id})-[:HAS_SYNC]->(r:SyncRun)
+        query = f"""
+        MATCH (a:{Node.ACCOUNT} {{id: $account_id}})-[:{Relationship.HAS_SYNC}]->(r:{Node.SYNC_RUN})
         RETURN r
         ORDER BY r.started_at DESC
         LIMIT 1
@@ -45,8 +42,8 @@ class SyncRepository:
         limit: int = 20,
         status: Optional[str] = None,
     ) -> list[SyncRun]:
-        query = """
-        MATCH (a:Account {id: $account_id})-[:HAS_SYNC]->(r:SyncRun)
+        query = f"""
+        MATCH (a:{Node.ACCOUNT} {{id: $account_id}})-[:{Relationship.HAS_SYNC}]->(r:{Node.SYNC_RUN})
         WHERE ($status IS NULL OR r.status = $status)
         RETURN r
         ORDER BY r.started_at DESC
@@ -58,48 +55,25 @@ class SyncRepository:
         return [SyncRun(**r["r"]) for r in results]
 
     # ── ServiceSyncRecord (per-service last state, upserted at completion) ─
-
-    async def upsert_service_record(
-        self,
-        account_id: str,
-        provider: str,
-        service_key: str,
-        status: str,
-        regions: list[str],
-        update_tag: int,
-        error: Optional[str] = None,
-    ) -> None:
+    async def upsert_service_record(self, record: ServiceSyncRecord) -> None:
         """
         Upsert the permanent per-service sync record.
         One node per (account_id, service_key) — always reflects the latest run.
         """
-        query = """
-        MERGE (r:ServiceSyncRecord {
-            account_id: $account_id,
-            service_key: $service_key
-        })
-        SET r.provider          = $provider,
-            r.last_status       = $status,
-            r.last_completed_at = $completed_at,
-            r.last_error        = $error,
-            r.last_regions      = $regions,
-            r.last_update_tag   = $update_tag
-        WITH r
-        MATCH (a:Account {id: $account_id})
-        MERGE (a)-[:HAS_SERVICE_SYNC]->(r)
-        """
-        await self.driver.execute_query(
-            query,
-            {
-                "account_id": account_id,
-                "service_key": service_key,
-                "provider": provider,
-                "status": status,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "error": error,
-                "regions": regions,
-                "update_tag": update_tag,
-            },
+        props = record.to_dict()
+        await self.driver.merge_node(
+            Node.SERVICE_SYNC_RECORD,
+            "id",
+            props["id"],
+            on_create_props=props,
+            on_match_props=props,
+        )
+        await self.driver.create_relationship(
+            Node.ACCOUNT,
+            record.account_id,
+            Relationship.HAS_SERVICE_SYNC,
+            Node.SERVICE_SYNC_RECORD,
+            props["id"],
         )
 
     async def get_service_statuses(self, account_id: str) -> list[dict]:
@@ -107,8 +81,8 @@ class SyncRepository:
         Read per-service last-sync records from Neo4j.
         Used by sync status — shows historical completed/failed state.
         """
-        query = """
-        MATCH (a:Account {id: $account_id})-[:HAS_SERVICE_SYNC]->(r:ServiceSyncRecord)
+        query = f"""
+        MATCH (a:{Node.ACCOUNT} {{id: $account_id}})-[:{Relationship.HAS_SERVICE_SYNC}]->(r:{Node.SERVICE_SYNC_RECORD})
         RETURN r.service_key    AS service_key,
                r.provider       AS provider,
                r.last_status    AS status,
@@ -132,8 +106,8 @@ class SyncRepository:
 
     async def get_stale_services(self, account_id: str, max_age_hours: int = 24) -> list[dict]:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
-        query = """
-        MATCH (a:Account {id: $account_id})-[:HAS_SERVICE_SYNC]->(r:ServiceSyncRecord)
+        query = f"""
+        MATCH (a:{Node.ACCOUNT} {{id: $account_id}})-[:{Relationship.HAS_SERVICE_SYNC}]->(r:{Node.SERVICE_SYNC_RECORD})
         WHERE r.last_status = 'failed'
            OR (
                r.last_completed_at IS NOT NULL
