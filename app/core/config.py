@@ -6,7 +6,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    ROOT_DIR = Path(__file__).parent.parent.parent
+    ROOT_DIR: Path = Path(__file__).parent.parent.parent
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -71,16 +71,21 @@ class Settings(BaseSettings):
             raise ValueError("API_HMAC_SECRET must be set for secure operations")
         return v
 
-    AWS_PROFILE_MODE: str = Field(default="DEFAULT")
+    CLOUD_MODE: str = Field(default="REAL")
 
+    AWS_PROFILE_MODE: str = Field(default="DEFAULT")
     AWS_REGIONS: List[str] = Field(default=["us-east-1", "us-west-2"])
 
-    @field_validator("AWS_REGIONS")
+    @field_validator("AWS_REGIONS", mode="before")
     @classmethod
     def validate_aws_regions(cls, v) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
         if isinstance(v, str):
-            v = [item.strip() for item in v.split(",")]
-        return v
+            return [item.strip() for item in v.split(",") if item.strip()]
+        raise ValueError("AWS_REGIONS must be a list or comma-separated string")
 
     AZURE_SP_AUTH: bool = Field(default=False)
     AZURE_TENANT_ID: str = Field(default="")

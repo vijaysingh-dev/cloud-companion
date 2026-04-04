@@ -1,5 +1,4 @@
 from rich import print
-from typing import Annotated
 
 import typer
 from app.cli.runtime import run_async, get_app
@@ -8,15 +7,17 @@ from app.core.constants import CloudProviderEnum
 from app.models.graph import Account
 
 
-cli = typer.Typer()
+cli = typer.Typer(no_args_is_help=True)
 
 
 @cli.command()
 def create(
-    org_name: str,
-    name: str,
-    provider: Annotated[CloudProviderEnum, typer.Argument(help="Cloud provider (aws, azure, gcp)")],
-    account_id: str,
+    provider: CloudProviderEnum = typer.Option(
+        ..., "--provider", "-p", help="Cloud provider (aws, azure, gcp)"
+    ),
+    org_name: str = typer.Option(..., "--org-name", "-o", help="Organization name"),
+    name: str = typer.Option(..., "--name", "-n", help="Account name"),
+    account_id: str = typer.Option(..., "--account-id", "-a", help="Cloud account ID"),
 ):
     async def _create():
         app = get_app()
@@ -27,25 +28,25 @@ def create(
             raise typer.Exit(code=1)
 
         acc = Account(
-            org_id=org.org_id,
+            id=account_id,
+            org_id=org.id,
             name=name,
             provider=provider,
-            account_id=account_id,
         )
 
-        await app.repo.organization.create_account(acc)
+        await app.repo.account.create_account(acc)
         print(f"[green]Cloud account created for [bold]{provider.value}[/bold][/green]")
 
     run_async(_create)
 
 
 @cli.command()
-def list(org_id: str):
+def list(org_id: str = typer.Option(..., "--org-id", "-o", help="Organization ID")):
     async def _list():
         app = get_app()
 
-        accounts = await app.repo.organization.list_accounts(org_id)
+        accounts = await app.repo.account.list_accounts(org_id)
         for r in accounts:
-            print(f"{r.account_id} | {r.name} | [bold cyan]{r.provider.value}[/bold cyan]")
+            print(f"{r.id} | {r.name} | [bold cyan]{r.provider.value}[/bold cyan]")
 
     run_async(_list)

@@ -78,7 +78,8 @@ class Node(str, Enum):
     RESOURCE = "Resource"
 
     # Utils
-    SYNC_METADATA = "SyncMetadata"
+    SERVICE_SYNC_RECORD = "ServiceSyncRecord"
+    SYNC_RUN = "SyncRun"
 
 
 class Relationship(str, Enum):
@@ -100,6 +101,7 @@ class Relationship(str, Enum):
     ATTACHED_TO = "ATTACHED_TO"
     ASSOCIATED_WITH = "ASSOCIATED_WITH"
     HAS_SYNC = "HAS_SYNC"
+    HAS_SERVICE_SYNC = "HAS_SERVICE_SYNC"
 
     # Networking
     HOSTS = "HOSTS"

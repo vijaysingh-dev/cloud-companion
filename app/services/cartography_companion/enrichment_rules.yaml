@@ -1,0 +1,79 @@
+rules:
+  - id: ec2_to_securitygroup
+    description: "Direct EC2→SG shortcut (skips ENI hop)"
+    source_label: EC2Instance
+    target_label: EC2SecurityGroup
+    relationship: PROTECTS
+    cypher: |
+      MATCH (src:EC2Instance)-[:NETWORK_INTERFACE]->(:NetworkInterface)
+            -[:MEMBER_OF]->(tgt:EC2SecurityGroup)
+      WHERE src.status <> 'stale' OR src.status IS NULL
+      MERGE (src)-[:PROTECTS]->(tgt)
+
+  - id: lambda_to_vpc
+    description: "Lambda→VPC when Lambda is VPC-attached"
+    source_label: AWSLambdaFunction
+    target_label: AWSVpc
+    relationship: DEPLOYED_IN
+    cypher: |
+      MATCH (fn:AWSLambdaFunction)
+      WHERE fn.vpcid IS NOT NULL
+      MATCH (vpc:AWSVpc {id: fn.vpcid})
+      MERGE (fn)-[:DEPLOYED_IN]->(vpc)
+
+  - id: lambda_to_securitygroup
+    description: "Lambda→SG for VPC-attached lambdas"
+    source_label: AWSLambdaFunction
+    target_label: EC2SecurityGroup
+    relationship: PROTECTS
+    cypher: |
+      MATCH (fn:AWSLambdaFunction)
+      WHERE fn.security_group_ids IS NOT NULL
+      UNWIND fn.security_group_ids AS sg_id
+      MATCH (sg:EC2SecurityGroup {id: sg_id})
+      MERGE (fn)-[:PROTECTS]->(sg)
+
+  - id: rds_to_securitygroup
+    description: "RDS instance→SG direct link"
+    source_label: RDSInstance
+    target_label: EC2SecurityGroup
+    relationship: PROTECTS
+    cypher: |
+      MATCH (rds:RDSInstance)-[:MEMBER_OF]->(sg:EC2SecurityGroup)
+      MERGE (rds)-[:PROTECTS]->(sg)
+
+  - id: apigateway_to_lambda
+    description: "REST API→Lambda integration"
+    source_label: APIGatewayRestAPI
+    target_label: AWSLambdaFunction
+    relationship: TRIGGERS
+    cypher: |
+      MATCH (api:APIGatewayRestAPI)-[:RESOURCE]->(res:APIGatewayResource)
+            -[:METHOD]->(m:APIGatewayMethod)
+      WHERE m.uri CONTAINS 'lambda'
+      WITH api, m,
+           split(split(m.uri, 'function:')[1], '/')[0] AS fn_name
+      MATCH (fn:AWSLambdaFunction {name: fn_name})
+      MERGE (api)-[:TRIGGERS]->(fn)
+
+  - id: ec2_to_subnet
+    description: "EC2→Subnet shortcut"
+    source_label: EC2Instance
+    target_label: EC2Subnet
+    relationship: DEPLOYED_IN
+    cypher: |
+      MATCH (i:EC2Instance)
+      WHERE i.subnetid IS NOT NULL
+      MATCH (s:EC2Subnet {subnetid: i.subnetid})
+      MERGE (i)-[:DEPLOYED_IN]->(s)
+
+  - id: ecs_service_to_iam
+    description: "ECS service task role→IAM"
+    source_label: ECSService
+    target_label: AWSPrincipal
+    relationship: ASSUMES_IDENTITY
+    cypher: |
+      MATCH (svc:ECSService)
+      WHERE svc.task_role_arn IS NOT NULL
+      MATCH (role:AWSPrincipal {arn: svc.task_role_arn})
+      MERGE (svc)-[:ASSUMES_IDENTITY]->(role)

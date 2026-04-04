@@ -9,11 +9,15 @@ from app.models.graph import APIKey
 from app.api.deps import hash_api_key
 
 
-cli = typer.Typer()
+cli = typer.Typer(no_args_is_help=True)
 
 
 @cli.command()
-def create(org_name: str, name: str, days_valid: int = 30):
+def create(
+    org_name: str = typer.Option(..., "--org-name", "-o", help="Organization name"),
+    name: str = typer.Option(..., "--name", "-n", help="API key name"),
+    days_valid: int = typer.Option(30, "--days-valid", "-d", help="Days until key expires"),
+):
     async def _create():
         app = get_app()
 
@@ -25,13 +29,13 @@ def create(org_name: str, name: str, days_valid: int = 30):
         raw_key = "cc_live_" + secrets.token_hex(32)
         expires = datetime.now(timezone.utc) + timedelta(days=days_valid)
         key_data = APIKey(
-            org_id=org.org_id,
+            org_id=org.id,
             name=name,
             hashed_key=hash_api_key(raw_key),
             expires_at=expires.isoformat(),
         )
 
-        await app.repo.organization.create_api_key(key_data)
+        await app.repo.api_key.create_api_key(key_data)
 
         print("\n[green]✔ API Key created successfully[/green]")
         print(f"Organization: [cyan]{org.name}[/cyan]")
@@ -44,23 +48,23 @@ def create(org_name: str, name: str, days_valid: int = 30):
 
 
 @cli.command()
-def revoke(key_id: str):
+def revoke(key_id: str = typer.Option(..., "--key-id", "-k", help="API key ID")):
     async def _revoke():
         app = get_app()
 
-        await app.repo.organization.revoke_api_key(key_id)
+        await app.repo.api_key.revoke_api_key(key_id)
         print("[yellow]Key revoked[/yellow]")
 
     run_async(_revoke)
 
 
 @cli.command()
-def list(org_id: str):
+def list(org_id: str = typer.Option(..., "--org-id", "-o", help="Organization ID")):
     async def _list():
         app = get_app()
 
-        keys = await app.repo.organization.list_api_keys(org_id)
+        keys = await app.repo.api_key.list_api_keys(org_id)
         for r in keys:
-            print(f"{r.key_id} | {r.name} | Active: {r.is_active}")
+            print(f"{r.id} | {r.name} | Active: {r.is_active}")
 
     run_async(_list)

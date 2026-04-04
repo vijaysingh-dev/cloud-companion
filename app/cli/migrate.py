@@ -8,7 +8,7 @@ cli = typer.Typer(invoke_without_command=True)
 
 
 @cli.callback()
-def migrate(ctx: typer.Context):
+def migrate():
     async def _migrate():
         app = get_app()
         await run_migrations(app.neo4j)

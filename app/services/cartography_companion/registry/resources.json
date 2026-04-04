@@ -102,6 +102,7 @@
     "cloud_run",
     "bigquery",
     "bigquery_connection",
-    "policy_bindings"
+    "policy_bindings",
+    "permission_relationships"
   ]
 }

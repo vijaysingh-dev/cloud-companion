@@ -6,17 +6,20 @@ from app.cli.runtime import run_async, get_app
 from app.models.graph import Organization
 
 
-cli = typer.Typer()
+cli = typer.Typer(no_args_is_help=True)
 
 
 @cli.command()
-def create(name: str, description: str = ""):
+def create(
+    name: str = typer.Option(..., "--name", "-n", help="Organization name"),
+    description: str = typer.Option("", "--description", "-d", help="Organization description"),
+):
     async def _create():
         app = get_app()
 
         org = Organization(name=name, description=description)
         await app.repo.organization.create_org(org)
-        print(f"[green]Organization created[/green] ID: {org.org_id}")
+        print(f"[green]Organization created[/green] ID: {org.id}")
 
     run_async(_create)
 
@@ -28,13 +31,13 @@ def list():
 
         orgs = await app.repo.organization.list_organizations()
         for r in orgs:
-            print(f"{r.org_id} | {r.name}")
+            print(f"{r.id} | {r.name}")
 
     run_async(_list)
 
 
 @cli.command()
-def delete(org_id: str):
+def delete(org_id: str = typer.Option(..., "--org-id", "-i", help="Organization ID")):
     async def _delete():
         app = get_app()
 

@@ -1,7 +1,8 @@
-from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-from app.core.config import ROOT_DIR, settings
+from pathlib import Path
+
+from app.core.config import settings
 
 
 class RelativePathFormatter(logging.Formatter):
@@ -10,7 +11,7 @@ class RelativePathFormatter(logging.Formatter):
     def format(self, record):
         # Get relative path from ROOT_DIR
         try:
-            record.relpath = str(Path(record.pathname).relative_to(ROOT_DIR))
+            record.relpath = str(Path(record.pathname).relative_to(settings.ROOT_DIR))
         except ValueError:
             record.relpath = record.pathname
 
@@ -22,7 +23,7 @@ def setup_logging() -> None:
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
     # Create logs directory if it doesn't exist
-    logs_dir = ROOT_DIR / "logs"
+    logs_dir = settings.ROOT_DIR / "logs"
     logs_dir.mkdir(exist_ok=True)
 
     log_format = "%(levelname)s | %(asctime)s.%(msecs)03d | %(relpath)s: %(message)s"

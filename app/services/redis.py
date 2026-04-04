@@ -6,27 +6,29 @@ from app.core.config import settings
 
 class RedisService:
     def __init__(self):
-        self.client: Redis | None = None
+        self._client: Redis | None = None
+
+    @property
+    def client(self) -> Redis:
+        if self._client is None:
+            raise RuntimeError("Redis not initialized. Call connect() first.")
+        return self._client
 
     async def connect(self):
-        self.client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
     async def close(self):
-        if self.client:
-            await self.client.close()
-
-    def _get_client(self) -> Redis:
-        if not self.client:
-            raise RuntimeError("Redis not connected")
-        return self.client
+        if self._client:
+            await self._client.close()
 
     async def get(self, key: str):
-        return await self._get_client().get(key)
+        return await self.client.get(key)
 
-    async def set(self, key: str, value: str, ttl: int = 0):
-        client = self._get_client()
+    async def set(self, key: str, value: str, ex: int = 0, *args, **kwargs):
+        if ex > 0:
+            kwargs.setdefault("ex", ex)
 
-        if ttl > 0:
-            await client.setex(key, ttl, value)
-        else:
-            await client.set(key, value)
+        await self.client.set(key, value, *args, **kwargs)
+
+    async def delete(self, key: str, *args, **kwargs):
+        await self.client.delete(key, *args, **kwargs)
