@@ -61,7 +61,7 @@ class Application:
         self._redis = RedisService()
         await self.redis.connect()
 
-        if self.mode in (AppMode.API, AppMode.CELERY):
+        if self.mode in (AppMode.APP, AppMode.CELERY):
             self._weaviate = WeaviateService()
             await self.weaviate.connect()
 
@@ -86,7 +86,7 @@ class Application:
 # =========================
 # Providers
 # =========================
-_api_app = Application(AppMode.API)
+_api_app = Application(AppMode.APP)
 _cli_app = Application(AppMode.CLI)
 
 

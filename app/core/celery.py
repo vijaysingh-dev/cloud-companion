@@ -1,5 +1,15 @@
 from celery import Celery
+from celery.signals import worker_process_init
+
 from app.core.config import settings
+
+
+@worker_process_init.connect
+def _setup_celery_logging(**kwargs) -> None:
+    from app.core.constants import AppMode
+    from app.core.logging import setup_logging
+
+    setup_logging(AppMode.CELERY)
 
 
 celery = Celery(

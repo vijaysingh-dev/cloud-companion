@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 
 class AppMode(str, Enum):
-    API = "API"
+    APP = "APP"
     CELERY = "CELERY"
     CLI = "CLI"
 

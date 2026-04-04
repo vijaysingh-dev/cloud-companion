@@ -1,5 +1,8 @@
 import typer
 
+from app.core.constants import AppMode
+from app.core.logging import setup_logging
+
 from app.cli.migrate import cli as migrate_cli
 from app.cli.organization import cli as org_cli
 from app.cli.account import cli as account_cli
@@ -16,4 +19,5 @@ cli.add_typer(key_cli, name="key")
 cli.add_typer(sync_cli, name="sync")
 
 if __name__ == "__main__":
+    setup_logging(AppMode.CLI)
     cli()

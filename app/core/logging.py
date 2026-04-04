@@ -2,7 +2,10 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from app.core.constants import AppMode
 from app.core.config import settings
+
+_configured = False
 
 
 class RelativePathFormatter(logging.Formatter):
@@ -19,48 +22,44 @@ class RelativePathFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logging() -> None:
+def setup_logging(mode: AppMode = AppMode.APP) -> None:
+    """Configure root logging once per process. File output is split by entrypoint (AppMode)."""
+    global _configured
+    if _configured:
+        return
+    _configured = True
+
+    context = mode.value.lower()
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
-    # Create logs directory if it doesn't exist
     logs_dir = settings.ROOT_DIR / "logs"
     logs_dir.mkdir(exist_ok=True)
 
     log_format = "%(levelname)s | %(asctime)s.%(msecs)03d | %(relpath)s: %(message)s"
 
     def create_formatter():
-        formatter = RelativePathFormatter(log_format, datefmt="%H:%M:%S")
-        return formatter
+        return RelativePathFormatter(log_format, datefmt="%H:%M:%S")
 
-    # Set up root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
 
-    # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(create_formatter())
     root_logger.addHandler(console_handler)
 
-    # Application log file handler
-    app_log_file = logs_dir / "application.log"
-    app_file_handler = RotatingFileHandler(
-        app_log_file, maxBytes=10 * 1024 * 1024, backupCount=5  # 10MB
-    )
+    app_log_file = logs_dir / f"{context}.log"
+    app_file_handler = RotatingFileHandler(app_log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
     app_file_handler.setFormatter(create_formatter())
     root_logger.addHandler(app_file_handler)
 
-    # Error log file handler
-    error_log_file = logs_dir / "application-error.log"
+    error_log_file = logs_dir / f"{context}-error.log"
     error_file_handler = RotatingFileHandler(
-        error_log_file, maxBytes=10 * 1024 * 1024, backupCount=5  # 10MB
+        error_log_file, maxBytes=10 * 1024 * 1024, backupCount=5
     )
     error_file_handler.setFormatter(create_formatter())
     error_file_handler.setLevel(logging.ERROR)
     root_logger.addHandler(error_file_handler)
 
-    logger = logging.getLogger("cloud-companion")
-    logger.debug(f"Logging configured with level: {settings.LOG_LEVEL}")
-
-
-def get_logger(name: str = "cloud-companion") -> logging.Logger:
-    return logging.getLogger(name)
+    logging.getLogger("cloud-companion").debug(
+        f"Logging configured (context={context}, level={settings.LOG_LEVEL})"
+    )

@@ -183,4 +183,10 @@ logs/
 
 # Archive directory for unrelated/temporary files
 .archive/
-scripts
+scripts/
+
+fixtures/
+app/cloud/
+app/graph/
+app/llm/
+app/truobleshooting/
