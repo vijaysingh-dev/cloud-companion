@@ -1,3 +1,19 @@
+# app/services/cartography_companion/pipeline.py
+
+"""
+Shared sync pipeline — consumed by CLI and Celery tasks.
+
+Changes vs. previous version
+-----------------------------
+1. `set_status("running")` is gone.  Status is written atomically inside
+   `acquire_lock` (status=running) and `release_lock` (terminal state).
+2. `release_lock` now receives the terminal status so lock release and status
+   flip are a single logical operation with no gap.
+3. `is_running` still checks the lock key (unchanged), but the status key is
+   now always consistent with it.
+"""
+
+
 import logging
 import time
 from uuid import uuid4
@@ -83,10 +99,12 @@ class SyncResult:
 class Pipeline:
     """
     Shared sync pipeline used by both CLI and app/Celery tasks.
+
     - Calls cartography intel modules directly (no CLI, no cleanup)
-    - Locks per account+service via Redis
-    - Tracks history in Neo4j
-    - Runs relationship enrichment after every sync
+    - Distributed lock per account+service via Redis
+    - Per-service history in Neo4j (ServiceSyncRecord)
+    - Whole-run summary node (SyncRun) written once at the end
+    - Relationship enrichment runs after every successful batch
     """
 
     def __init__(self, neo4j: Neo4jService, redis: RedisService):
@@ -94,6 +112,8 @@ class Pipeline:
         self.sync_repo = SyncRepository(neo4j)
         self.redis_tracker = RedisSyncTracker(redis)
         self.enricher = RelationshipEnricher(neo4j)
+
+    # ── provider context ─────────────────────────────────────────────────────
 
     def _build_provider_context(
         self,
@@ -103,11 +123,13 @@ class Pipeline:
     ):
         if provider == CloudProviderEnum.AWS:
             return build_aws_context(service_keys)
-        elif provider == CloudProviderEnum.AZURE:
+        if provider == CloudProviderEnum.AZURE:
             return build_azure_context(account_id)
-        elif provider == CloudProviderEnum.GCP:
+        if provider == CloudProviderEnum.GCP:
             return build_gcp_context(account_id)
         raise ValueError(f"Unsupported provider: {provider}")
+
+    # ── main entry point ─────────────────────────────────────────────────────
 
     async def run(
         self,
@@ -122,7 +144,7 @@ class Pipeline:
         sync_run_id = str(uuid4())
         started_at = utc_now()
 
-        # ── Resolve, validate and order in one shot ──────────────────────
+        # ── Resolve, validate, and topologically order ────────────────────
         ordered_services, expand_errors = registry.expand(service_keys, provider=provider.value)
 
         for key, reason in expand_errors.items():
@@ -137,37 +159,37 @@ class Pipeline:
 
         patch_cartography_cleanup()
 
-        # ── Build provider context ONCE for the whole run ────────────────
+        # ── Build provider context once for the whole run ─────────────────
         try:
             ctx = self._build_provider_context(
                 provider, account_id, [s.key for s in ordered_services]
             )
         except Exception as e:
-            # Auth failure — mark all resolved services as failed immediately
             for svc in ordered_services:
                 result.failed[svc.key] = f"provider auth failed: {e}"
             logger.exception(f"Failed to build {provider.value} context: {e}")
             return result
 
+        # ── Per-service loop ──────────────────────────────────────────────
         for svc in ordered_services:
             svc_region = regions if svc.requires_region else []
 
-            # ── Lock check ───────────────────────────────────────────────
-            if not force:
-                already_running = await self.redis_tracker.is_running(account_id, svc.key)
-                if already_running:
-                    result.skipped[svc.key] = "already running"
-                    logger.info(f"  ~ [{svc.key}] skipped (already running)")
-                    continue
+            # Lock check (reads lock key, not status key)
+            if not force and await self.redis_tracker.is_running(account_id, svc.key):
+                result.skipped[svc.key] = "already running"
+                logger.info(f"  ~ [{svc.key}] skipped (already running)")
+                continue
 
+            # Acquire lock — also atomically sets status=running
             acquired = await self.redis_tracker.acquire_lock(account_id, svc.key, sync_run_id)
             if not acquired:
                 result.skipped[svc.key] = "lock not acquired"
                 continue
 
-            try:
-                await self.redis_tracker.set_status(account_id, svc.key, "running")
+            terminal_status = "failed"
+            terminal_extra: dict = {}
 
+            try:
                 logger.info(
                     f"  → [{svc.key}] syncing "
                     f"(regions={', '.join(svc_region) if svc_region else 'global'})"
@@ -181,7 +203,6 @@ class Pipeline:
                     account_id=account_id,
                 )
 
-                # ── Write to Neo4j at completion, not at start ───────────────
                 await self.sync_repo.upsert_service_record(
                     ServiceSyncRecord(
                         account_id=account_id,
@@ -193,8 +214,8 @@ class Pipeline:
                         last_completed_at=utc_now(),
                     )
                 )
-                await self.redis_tracker.set_status(account_id, svc.key, "completed")
                 result.succeeded.append(svc.key)
+                terminal_status = "completed"
                 logger.info(f"  ✓ [{svc.key}] done")
 
             except Exception as e:
@@ -212,15 +233,20 @@ class Pipeline:
                         last_error=error_msg,
                     )
                 )
-                await self.redis_tracker.set_status(
-                    account_id, svc.key, "failed", {"error": error_msg}
-                )
                 result.failed[svc.key] = error_msg
+                terminal_extra = {"error": error_msg}
 
             finally:
-                await self.redis_tracker.release_lock(account_id, svc.key)
+                # Lock release + status flip are atomic in release_lock.
+                # No window where lock is gone but status still says "running".
+                await self.redis_tracker.release_lock(
+                    account_id,
+                    svc.key,
+                    terminal_status=terminal_status,
+                    extra=terminal_extra,
+                )
 
-        # ── Write the whole-run SyncRun node once at the end ─────────────────
+        # ── Write whole-run SyncRun node once at the end ──────────────────
         overall_status = (
             "completed"
             if not result.runtime_failures
@@ -233,7 +259,7 @@ class Pipeline:
             update_tag=result.update_tag,
             services=service_keys,
             regions=regions,
-            trigger=None,  # caller can pass this in if needed
+            trigger=None,
             status=overall_status,
             started_at=started_at,
             completed_at=utc_now(),

@@ -33,6 +33,7 @@ def _build_aws_kwargs(
     kwargs: dict[str, Any] = {
         "neo4j_session": session,
         "boto3_session": ctx.boto_session,
+        "regions": regions,
         "current_aws_account_id": account_id,
         "update_tag": update_tag,
         "common_job_parameters": {
@@ -40,8 +41,6 @@ def _build_aws_kwargs(
             "AWS_ID": account_id,
         },
     }
-    if svc.requires_region:
-        kwargs["regions"] = regions
     return kwargs
 
 
@@ -184,13 +183,28 @@ def _call_intel_fn_blocking(
     module = importlib.import_module(svc.module_path)
     fn = getattr(module, svc.function_name)
 
-    with neo4j_driver.session() as session:
-        kwargs = _build_kwargs(svc, session, ctx, regions, account_id, update_tag)
-        logger.debug(
-            f"[{svc.provider}] {svc.module_path}.{svc.function_name} "
-            f"params={list(kwargs.keys())}"
-        )
-        fn(**kwargs)
+    loop = None
+    try:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        with neo4j_driver.session() as session:
+            kwargs = _build_kwargs(svc, session, ctx, regions, account_id, update_tag)
+            logger.debug(
+                f"[{svc.provider}] {svc.module_path}.{svc.function_name} "
+                f"params={list(kwargs.keys())}"
+            )
+            fn(**kwargs)
+    finally:
+        if loop is not None and not loop.is_closed():
+            loop.close()
+            try:
+                asyncio.set_event_loop(None)
+            except RuntimeError:
+                pass
 
 
 async def execute_service_sync(
@@ -201,7 +215,7 @@ async def execute_service_sync(
     update_tag: int,
     account_id: str,
 ) -> None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(
         None,
         partial(

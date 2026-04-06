@@ -1,27 +1,44 @@
-import json
-import logging
-from typing import Optional
+"""
+Redis-backed live sync state.
+
+Design: a single status key per (account_id, service_key) carries BOTH the
+human-readable status AND acts as the distributed lock.  The lock key is kept
+as a *separate* NX key so we can do an atomic acquire, but `is_running` reads
+the status key — not the lock key — so the two views are always consistent.
+
+Key layout
+----------
+sync:lock:<account>:<svc>      NX lock, owned by sync_run_id, TTL=LOCK_TTL
+sync:status:<account>:<svc>    JSON payload, TTL=STATUS_TTL (or INVALID_TTL)
+"""
+
+import json, logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from app.services.redis import RedisService
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("redis-tracker")
 
-# Key patterns
+
+LOCK_TTL_SECONDS = 600  # 10 min hard ceiling per service
+STATUS_TTL_SECONDS = 86400  # 24 h — Redis is the live view; Neo4j is canonical
+INVALID_TTL = 3600  # 1 h — bad keys shouldn't pollute status forever
+
 _LOCK_KEY = "sync:lock:{account_id}:{service_key}"
 _STATUS_KEY = "sync:status:{account_id}:{service_key}"
-_PROGRESS_KEY = "sync:progress:{account_id}"  # hash of all in-progress services
-
-LOCK_TTL_SECONDS = 600  # 10 min max for a single service sync
-STATUS_TTL_SECONDS = 86400  # 24h — live status expires, Neo4j has the permanent record
-INVALID_TTL = 3600  # 1 hour — bad keys shouldn't pollute status forever
 
 
 class RedisSyncTracker:
     """
-    Live sync state in Redis.
-    - Distributed lock per account+service (prevents duplicate syncs)
-    - Fast status reads without hitting Neo4j
+    Distributed lock + fast status cache for in-flight syncs.
+
+    Invariant
+    ---------
+    A service is "running" iff its *lock key* exists.  The status key always
+    mirrors this: acquiring the lock immediately writes status=running; releasing
+    it writes the terminal status (completed / failed).  There is no window where
+    the lock is gone but status still says running.
     """
 
     def __init__(self, redis: RedisService):
@@ -33,6 +50,11 @@ class RedisSyncTracker:
     def _status_key(self, account_id: str, service_key: str) -> str:
         return _STATUS_KEY.format(account_id=account_id, service_key=service_key)
 
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    # ── lock ─────────────────────────────────────────────────────────────────
+
     async def acquire_lock(
         self,
         account_id: str,
@@ -40,96 +62,116 @@ class RedisSyncTracker:
         sync_run_id: str,
     ) -> bool:
         """
-        Returns True if lock acquired (safe to proceed).
-        Returns False if another sync is already running for this service.
-        Uses SET NX EX — atomic, no race condition.
+        Atomically acquire the lock and write status=running.
+
+        redis-py SET NX returns True on success, None if key already exists.
+        RedisService.set() now returns that value directly.
         """
-        key = self._lock_key(account_id, service_key)
-        acquired = await self.redis.set(
-            key,
+        lock_key = self._lock_key(account_id, service_key)
+
+        result = await self.redis.set(
+            lock_key,
             sync_run_id,
-            nx=True,  # only set if not exists
             ex=LOCK_TTL_SECONDS,
+            nx=True,
         )
-        return acquired is not None
+        acquired = result is True  # None → already locked; True → acquired
 
-    async def release_lock(self, account_id: str, service_key: str) -> None:
-        key = self._lock_key(account_id, service_key)
-        await self.redis.delete(key)
+        if not acquired:
+            existing = await self.redis.get(lock_key)
+            logger.warning(
+                f"[{account_id}:{service_key}] lock NOT acquired " f"(held by run {existing!r})"
+            )
+            return False
 
-    async def set_invalid(self, account_id: str, service_key: str, reason: str) -> None:
-        """Mark a service key as invalid (unknown/misconfigured) in Redis."""
-        key = self._status_key(account_id, service_key)
-        payload = {
-            "status": "invalid",
-            "error": reason,
-            "recorded_at": datetime.utcnow().isoformat(),
-        }
-        await self.redis.set(key, json.dumps(payload), ex=INVALID_TTL)
+        # Write status=running atomically with the lock
+        await self.redis.set_json(
+            self._status_key(account_id, service_key),
+            {
+                "status": "running",
+                "sync_run_id": sync_run_id,
+                "updated_at": self._now(),
+            },
+            ex=STATUS_TTL_SECONDS,
+        )
+        logger.debug(f"[{account_id}:{service_key}] lock acquired (run={sync_run_id})")
+        return True
 
-    async def set_status(
+    async def release_lock(
         self,
         account_id: str,
         service_key: str,
-        status: str,
+        *,
+        terminal_status: str,
         extra: Optional[dict] = None,
     ) -> None:
-        key = self._status_key(account_id, service_key)
-        payload = {
-            "status": status,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            **(extra or {}),
-        }
-        await self.redis.set(key, json.dumps(payload), ex=STATUS_TTL_SECONDS)
+        """
+        Write terminal status BEFORE deleting the lock so readers never see
+        is_running()==False with status still "running".
+        """
+        await self.redis.set_json(
+            self._status_key(account_id, service_key),
+            {
+                "status": terminal_status,
+                "updated_at": self._now(),
+                **(extra or {}),
+            },
+            ex=STATUS_TTL_SECONDS,
+        )
+        await self.redis.delete(self._lock_key(account_id, service_key))
+        logger.debug(f"[{account_id}:{service_key}] lock released → {terminal_status}")
 
-    async def get_status(
-        self,
-        account_id: str,
-        service_key: str,
-    ) -> Optional[dict]:
-        key = self._status_key(account_id, service_key)
-        val = await self.redis.get(key)
-        return json.loads(val) if val else None
+    # ── status helpers ────────────────────────────────────────────────────────
+
+    async def set_invalid(self, account_id: str, service_key: str, reason: str) -> None:
+        await self.redis.set_json(
+            self._status_key(account_id, service_key),
+            {
+                "status": "invalid",
+                "error": reason,
+                "updated_at": self._now(),
+            },
+            ex=INVALID_TTL,
+        )
+        logger.debug(f"[{account_id}:{service_key}] marked invalid: {reason}")
+
+    async def get_status(self, account_id: str, service_key: str) -> Optional[dict]:
+        return await self.redis.get_json(self._status_key(account_id, service_key))
 
     async def get_statuses(
         self,
         account_id: str,
         service_keys: list[str],
     ) -> dict[str, dict]:
-        """
-        Bulk-fetch Redis state for a list of service keys.
-        Returns {service_key: state_dict} for keys that have an entry.
-        Keys with no Redis entry are omitted.
-        """
         if not service_keys:
             return {}
-
         redis_keys = [self._status_key(account_id, k) for k in service_keys]
-        values = await self.redis.client.mget(*redis_keys)
-
+        values = await self.redis.mget(*redis_keys)
         result: dict[str, dict] = {}
         for service_key, val in zip(service_keys, values):
             if val:
                 try:
                     result[service_key] = json.loads(val)
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    logger.warning(f"[{account_id}:{service_key}] corrupt Redis status entry")
         return result
 
     async def get_all_statuses(self, account_id: str) -> dict[str, dict]:
-        """Returns all cached service statuses for an account."""
         pattern = _STATUS_KEY.format(account_id=account_id, service_key="*")
-        keys = await self.redis.client.keys(pattern)
+        keys = await self.redis.keys(pattern)
         if not keys:
             return {}
-        values = await self.redis.client.mget(*keys)
+        values = await self.redis.mget(*keys)
         result = {}
         for key, val in zip(keys, values):
             if val:
-                service_key = key.decode().split(":")[-1]
-                result[service_key] = json.loads(val)
+                service_key = key.split(":")[-1]
+                try:
+                    result[service_key] = json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    pass
         return result
 
     async def is_running(self, account_id: str, service_key: str) -> bool:
-        key = self._lock_key(account_id, service_key)
-        return await self.redis.client.exists(key) == 1
+        count = await self.redis.exists(self._lock_key(account_id, service_key))
+        return count == 1
